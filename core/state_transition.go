@@ -183,6 +183,9 @@ func NewStateTransition(evm *vm.EVM, msg Message, gp *GasPool) *StateTransition 
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
 func ApplyMessage(evm *vm.EVM, msg Message, gp *GasPool) (*ExecutionResult, error) {
+	if evm.Config.Debug == true {
+		// Simulation 여부 체크하는 곳
+	}
 	return NewStateTransition(evm, msg, gp).TransitionDb()
 }
 

@@ -17,6 +17,7 @@
 package vm
 
 import (
+	"github.com/ethereum/go-ethereum/log"
 	"math/big"
 	"sync/atomic"
 
@@ -166,6 +167,13 @@ func (evm *EVM) Interpreter() *EVMInterpreter {
 // execution error or failed value transfer.
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Fail if we're trying to execute above the call depth limit
+	//evm.Config.Debug
+	if evm.Config.Debug == true {
+		log.Info("This is Call Simulation")
+	} else {
+		log.Info("This is Real Call....!")
+	}
+
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}

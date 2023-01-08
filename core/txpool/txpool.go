@@ -17,10 +17,13 @@
 package txpool
 
 import (
+	"context"
+	"encoding/hex"
 	"errors"
 	"math"
 	"math/big"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -35,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/go-redis/redis/v8"
 )
 
 const (
@@ -183,7 +187,9 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime: 3 * time.Hour,
+	Lifetime:     3 * time.Hour,
+	MsgQueueAddr: "127.0.0.1",
+	MsgQueuePort: 6379,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -242,6 +248,8 @@ type TxPool struct {
 	signer      types.Signer
 	mu          sync.RWMutex
 
+	redisClient *redis.Client
+
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
 	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559  bool // Fork indicator whether we are using EIP-1559 type transactions.
@@ -276,6 +284,15 @@ type txpoolResetRequest struct {
 	oldHead, newHead *types.Header
 }
 
+type PendingTransaction struct {
+	From     string   `json:"From"`
+	To       string   `json:"To"`
+	hash     string   `json:"hash"`
+	gas      uint64   `json:"gas"`
+	gasPrice *big.Int `json:"gasPrice"`
+	payload  string   `json:"payload"`
+}
+
 // NewTxPool creates a new transaction pool to gather, sort and filter inbound
 // transactions from the network.
 func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain) *TxPool {
@@ -301,6 +318,13 @@ func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain)
 		initDoneCh:      make(chan struct{}),
 		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
 	}
+
+	pool.redisClient = redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
 		log.Info("Setting new local account", "address", addr)
@@ -946,6 +970,36 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error,
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
+		if err == nil {
+			hash := tx.Hash().String()
+			pendingMsg, _ := tx.AsMessage(types.LatestSignerForChainID(tx.ChainId()), nil)
+			from := pendingMsg.From().Hex()
+			to := tx.To().Hex()
+			gas := tx.Gas()
+			gasPrice := tx.GasPrice()
+			payload := hex.EncodeToString(tx.Data())
+
+			log.Info("pending transaction hash -> " + hash)
+			log.Info("pending transaction to -> " + to)
+			log.Info("pending transaction from -> " + from)
+			log.Info("pending transaction gas -> " + strconv.FormatUint(gas, 10))
+			log.Info("pending transaction gasPrice -> " + gasPrice.String())
+			log.Info("pending transaction input data -> " + payload)
+
+			var redisPayload = PendingTransaction{
+				From:     from,
+				To:       to,
+				hash:     hash,
+				gas:      gas,
+				gasPrice: gasPrice,
+				payload:  payload,
+			}
+
+			if err := pool.redisClient.Publish(context.Background(), "MEV_INFO", redisPayload); err != nil {
+				log.Error(err.String())
+			}
+		}
+
 		if err == nil && !replaced {
 			dirty.addTx(tx)
 		}
