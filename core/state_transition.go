@@ -17,7 +17,10 @@
 package core
 
 import (
+	"encoding/hex"
 	"fmt"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/go-redis/redis/v8"
 	"math"
 	"math/big"
 
@@ -81,6 +84,7 @@ type Message interface {
 	Nonce() uint64
 	IsFake() bool
 	Data() []byte
+	RedisClient() *redis.Client
 	AccessList() types.AccessList
 }
 
@@ -336,6 +340,19 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
+
+		if st.evm.Config.Debug {
+			var redisClient = msg.RedisClient()
+			result, err := redisClient.LRange(st.to().String(), 0, -1).Result()
+			if len(result) > 0 {
+				funcSig := hex.EncodeToString(st.data[0:4])
+				for _, elem := range result {
+					if elem == funcSig {
+						log.Info("find target call!!!")
+					}
+				}
+			}
+		}
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 

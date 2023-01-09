@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-redis/redis/v8"
 	"math/big"
 	"sync"
 	"time"
@@ -818,6 +819,11 @@ func (b *SimulatedBackend) Blockchain() *core.BlockChain {
 // callMsg implements core.Message to allow passing it as a transaction simulator.
 type callMsg struct {
 	ethereum.CallMsg
+}
+
+func (m callMsg) RedisClient() *redis.Client {
+	//TODO implement me
+	return m.CallMsg.RedisClient
 }
 
 func (m callMsg) From() common.Address         { return m.CallMsg.From }
