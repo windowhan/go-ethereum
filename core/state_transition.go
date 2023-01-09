@@ -344,8 +344,11 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		if st.evm.Config.Debug {
 			var redisClient = msg.RedisClient()
 			result, err := redisClient.LRange("contract_sig_"+st.to().String(), 0, -1).Result()
+
+			funcSig := hex.EncodeToString(st.data[0:4])
+			log.Info("This function call signature : " + funcSig)
+
 			if len(result) > 0 {
-				funcSig := hex.EncodeToString(st.data[0:4])
 				for _, elem := range result {
 					if elem == funcSig {
 						log.Info("find target call!!!")
