@@ -20,6 +20,8 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"math"
 	"math/big"
 	"sort"
@@ -985,6 +987,22 @@ func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error,
 			log.Info("pending transaction gas -> " + strconv.FormatUint(gas, 10))
 			log.Info("pending transaction gasPrice -> " + gasPrice.String())
 			log.Info("pending transaction input data -> " + payload)
+
+			simulation := backends.NewSimulatedBackend(core.GenesisAlloc{}, 3000000)
+			myCtx := context.Background()
+
+			callMsg := ethereum.CallMsg{
+				From:        pendingMsg.From(),
+				To:          tx.To(),
+				Data:        tx.Data(),
+				RedisClient: pool.redisClient,
+			}
+
+			retValue, err := simulation.PendingCallContract(myCtx, callMsg)
+			if err != nil {
+				log.Error("PendingCallContract Error %v", err)
+			}
+			log.Info("return Value : %v", retValue)
 
 			var redisPayload = PendingTransaction{
 				From:     from,
